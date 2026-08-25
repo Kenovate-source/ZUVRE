@@ -1,0 +1,19 @@
+{
+  "name": "@zuvre/auth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ZUVRE-level identity/session/authorization primitives, provider-abstracted (ADR-0005: Better Auth, self-hosted, WorkOS reserved for future enterprise SSO/SCIM).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "better-auth": "^1.2.0"
+  },
+  "devDependencies": { "typescript": "^5.6.0" }
+}
