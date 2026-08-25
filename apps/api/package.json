@@ -1,0 +1,23 @@
+{
+  "name": "@zuvre/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ZUVRE backend API — tRPC (internal) + versioned REST (external), ADR-0003.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --watch dist/server.js",
+    "start": "node dist/server.js",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "@zuvre/core": "workspace:*",
+    "@zuvre/db": "workspace:*",
+    "@zuvre/auth": "workspace:*",
+    "@zuvre/observability": "workspace:*",
+    "@trpc/server": "^11.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": { "typescript": "^5.6.0" }
+}
