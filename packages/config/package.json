@@ -1,0 +1,15 @@
+{
+  "name": "@zuvre/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared TypeScript, ESLint, and Tailwind configuration.",
+  "type": "module",
+  "exports": {
+    "./typescript/base": "./typescript/base.json",
+    "./eslint/base": "./eslint/base.js",
+    "./tailwind/base": "./tailwind/base.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
