@@ -1,0 +1,23 @@
+{
+  "name": "@zuvre/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capability-agnostic domain model and orchestration core.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "@zuvre/capability-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
