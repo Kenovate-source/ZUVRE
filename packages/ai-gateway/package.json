@@ -1,0 +1,20 @@
+{
+  "name": "@zuvre/ai-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-agnostic AI gateway — all model-provider calls go through here (ADR-0006).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./testing": { "types": "./dist/testing/index.d.ts", "default": "./dist/testing/index.js" }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": { "@zuvre/observability": "workspace:*" },
+  "devDependencies": { "typescript": "^5.6.0" }
+}
