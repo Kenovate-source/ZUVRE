@@ -1,0 +1,24 @@
+# Local development database — ADR-0004, ADR-0008.
+# Usage: docker compose up -d
+# Not executed in the build sandbox (no Docker available there); intended for
+# real development environments and CI integration-test jobs.
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zuvre
+      POSTGRES_PASSWORD: zuvre
+      POSTGRES_DB: zuvre_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - zuvre_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zuvre -d zuvre_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  zuvre_postgres_data:
