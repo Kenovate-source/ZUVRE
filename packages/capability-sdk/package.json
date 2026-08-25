@@ -1,0 +1,20 @@
+{
+  "name": "@zuvre/capability-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The typed contract capability modules implement to register with ZUVRE core. See ADR-0002.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/**/*.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
