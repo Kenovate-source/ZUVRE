@@ -1,0 +1,17 @@
+{
+  "name": "@zuvre/agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal plan/act/observe agent loop boundary, capability-agnostic.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": { "@zuvre/tool-runtime": "workspace:*" },
+  "devDependencies": { "typescript": "^5.6.0" }
+}
