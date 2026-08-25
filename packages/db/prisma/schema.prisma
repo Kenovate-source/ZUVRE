@@ -1,0 +1,207 @@
+// ZUVRE database schema — foundation entities only (ADR-0004, ADR-0008).
+// No capability-specific tables exist here. When modules/website-creation
+// is built, its own persistent state is added deliberately at that point,
+// not speculatively now.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  displayName String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships WorkspaceMembership[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships          WorkspaceMembership[]
+  projects             Project[]
+  creationRequests     CreationRequest[]
+  creationSpecifications CreationSpecification[]
+  builds               Build[]
+  assets               Asset[]
+  deployments          Deployment[]
+
+  @@map("workspaces")
+}
+
+enum WorkspaceRole {
+  owner
+  admin
+  member
+}
+
+model WorkspaceMembership {
+  id          String        @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@map("workspace_memberships")
+}
+
+model Project {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  name           String
+  // Opaque identifier interpreted only by capability modules — never
+  // branched on inside this schema or inside @zuvre/core.
+  capabilityType String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace           Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creationRequests     CreationRequest[]
+  creationSpecifications CreationSpecification[]
+  builds               Build[]
+  assets               Asset[]
+  deployments          Deployment[]
+
+  @@index([workspaceId])
+  @@map("projects")
+}
+
+enum CreationRequestStatus {
+  pending
+  specified
+  rejected
+}
+
+model CreationRequest {
+  id          String                 @id @default(uuid())
+  workspaceId String
+  projectId   String
+  rawInput    String
+  status      CreationRequestStatus  @default(pending)
+  createdAt   DateTime               @default(now())
+
+  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project       Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  specification CreationSpecification?
+
+  @@index([workspaceId])
+  @@index([projectId])
+  @@map("creation_requests")
+}
+
+model CreationSpecification {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  projectId          String
+  creationRequestId  String   @unique
+  capabilityType     String
+  // Opaque JSON payload — shape owned entirely by the capability module
+  // named in capabilityType. Not interpreted at the schema level.
+  payload            Json
+  createdAt          DateTime @default(now())
+
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creationRequest CreationRequest @relation(fields: [creationRequestId], references: [id], onDelete: Cascade)
+  builds          Build[]
+
+  @@index([workspaceId])
+  @@index([projectId])
+  @@map("creation_specifications")
+}
+
+enum BuildStatus {
+  queued
+  planning
+  executing
+  succeeded
+  failed
+}
+
+model Build {
+  id                       String      @id @default(uuid())
+  workspaceId              String
+  projectId                String
+  creationSpecificationId  String
+  status                   BuildStatus @default(queued)
+  startedAt                DateTime?
+  completedAt              DateTime?
+  error                    String?
+  createdAt                DateTime    @default(now())
+
+  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project       Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  specification CreationSpecification  @relation(fields: [creationSpecificationId], references: [id], onDelete: Cascade)
+  assets        Asset[]
+  deployments   Deployment[]
+
+  @@index([workspaceId])
+  @@index([projectId])
+  @@map("builds")
+}
+
+model Asset {
+  id          String   @id @default(uuid())
+  workspaceId String
+  projectId   String
+  buildId     String
+  type        String
+  location    String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  build     Build     @relation(fields: [buildId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([buildId])
+  @@map("assets")
+}
+
+enum DeploymentStatus {
+  pending
+  deploying
+  live
+  failed
+  rolled_back
+}
+
+model Deployment {
+  id          String           @id @default(uuid())
+  workspaceId String
+  projectId   String
+  buildId     String
+  // e.g. "vercel" — see ADR-0007. Never branched on inside core.
+  provider    String
+  status      DeploymentStatus @default(pending)
+  url         String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  build     Build     @relation(fields: [buildId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([buildId])
+  @@map("deployments")
+}
