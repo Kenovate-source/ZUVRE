@@ -1,0 +1,18 @@
+{
+  "name": "@zuvre/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Background job execution shell — minimal structure only, no creation-engine logic yet.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "@zuvre/core": "workspace:*",
+    "@zuvre/observability": "workspace:*"
+  },
+  "devDependencies": { "typescript": "^5.6.0" }
+}
