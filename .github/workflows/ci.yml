@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm turbo run lint
+
+      - name: Typecheck
+        run: pnpm turbo run typecheck
+
+      - name: Unit tests
+        run: pnpm turbo run test
+
+      - name: Build
+        run: pnpm turbo run build
+
+  db-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: zuvre
+          POSTGRES_PASSWORD: zuvre
+          POSTGRES_DB: zuvre_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zuvre -d zuvre_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma migrate deploy
+        run: pnpm --filter @zuvre/db prisma:migrate:deploy
+        env:
+          DATABASE_URL: postgresql://zuvre:zuvre@localhost:5432/zuvre_dev
+
+      # Real Postgres integration tests (beyond the in-memory workspace-
+      # isolation tests that already run in the `ci` job) are added when
+      # @zuvre/db's Prisma-backed store adapters are built out — not
+      # speculatively stubbed here.

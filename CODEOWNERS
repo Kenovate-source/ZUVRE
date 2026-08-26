@@ -1,0 +1,38 @@
+# ZUVRE CODEOWNERS — PROPOSAL
+#
+# This file maps package/module boundaries (see docs/architecture/README.md)
+# to owning teams. Placeholder team handles below need to be replaced with
+# real GitHub team/usernames once the repository and team structure exist —
+# this is a structural proposal, not a final assignment.
+#
+# Rule: every top-level package and module gets exactly one primary owner
+# entry. Cross-cutting packages (core, capability-sdk, ai-gateway, auth, db,
+# tool-runtime) should have the smallest, most stable owner group, since
+# changes there affect everything built on top of them.
+
+# Cross-cutting / high-leverage packages — smallest, most stable owner group
+/packages/core/            @zuvre/platform-core
+/packages/capability-sdk/  @zuvre/platform-core
+/packages/db/              @zuvre/platform-data
+/packages/auth/            @zuvre/platform-security
+/packages/ai-gateway/      @zuvre/platform-ai
+/packages/agent-runtime/   @zuvre/platform-ai
+/packages/tool-runtime/    @zuvre/platform-ai
+/packages/observability/   @zuvre/platform-core
+
+# Shared, lower-risk packages
+/packages/config/          @zuvre/platform-core
+/packages/ui/              @zuvre/frontend
+
+# Applications
+/apps/web/                 @zuvre/frontend
+/apps/api/                 @zuvre/platform-core
+/apps/worker/              @zuvre/platform-core
+
+# Capability modules — one owner group per module, isolated from each other
+/modules/website-creation/ @zuvre/capability-website
+
+# Architecture & process — changes here should get broad visibility
+/adr/                      @zuvre/platform-core
+/docs/                     @zuvre/platform-core
+CONTRIBUTING.md            @zuvre/platform-core
