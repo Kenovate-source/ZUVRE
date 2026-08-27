@@ -18,7 +18,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/**/*.test.ts",
+    "test": "node --test dist/**/*.test.js",
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
