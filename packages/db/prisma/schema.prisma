@@ -1,10 +1,16 @@
-// ZUVRE database schema — foundation entities only (ADR-0004, ADR-0008).
-// No capability-specific tables exist here. When modules/website-creation
-// is built, its own persistent state is added deliberately at that point,
-// not speculatively now.
+// ZUVRE — Core Data Model
+// See docs/12-data-model.md for the full specification and rationale.
+//
+// Design rules enforced by convention across the app layer (see packages/db/src/scope.ts):
+//   1. Every workspace-owned table carries a `workspaceId`.
+//   2. All reads/writes to workspace-owned tables MUST go through a scoped client
+//      (`scopedDb(workspaceId)`) — never the raw `PrismaClient` — outside of
+//      platform-owner administrative paths, which are themselves audited.
+//   3. Cross-workspace joins are forbidden at the query layer.
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -12,196 +18,436 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
 model User {
-  id          String   @id @default(uuid())
-  email       String   @unique
-  displayName String
+  id                String   @id @default(cuid())
+  email             String   @unique
+  emailVerifiedAt   DateTime?
+  displayName       String
+  handle            String   @unique
+  avatarUrl         String?
+  passwordHash      String?
+  isPlatformOwner   Boolean  @default(false)
+  status            UserStatus @default(ACTIVE)
+  locale            String   @default("en")
+  timeZone          String   @default("UTC")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  sessions          Session[]
+  memberships       WorkspaceMember[]
+  ownedWorkspaces   Workspace[]        @relation("WorkspaceOwner")
+  recoveryFactors   RecoveryFactor[]
+  auditActor        AuditLog[]         @relation("AuditActor")
+  agentRunsStarted  AgentRun[]         @relation("AgentRunInitiator")
+  memoryItems       MemoryItem[]
+
+  @@index([status])
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+  PENDING_VERIFICATION
+}
+
+model Session {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceLabel   String?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+
+  @@index([userId])
+}
+
+model RecoveryFactor {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        RecoveryFactorType
+  identifier  String    // hashed/opaque reference (e.g. recovery email hash, phone hash)
+  verifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+enum RecoveryFactorType {
+  RECOVERY_EMAIL
+  PHONE
+  BACKUP_CODES
+}
+
+// ---------------------------------------------------------------------------
+// Workspaces & Roles
+// ---------------------------------------------------------------------------
+// A Workspace is the unit of data isolation. A personal account is a
+// single-member Workspace created automatically at signup.
+
+model Workspace {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  kind        WorkspaceKind @default(PERSONAL)
+  ownerId     String
+  owner       User     @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  memberships WorkspaceMembership[]
+  members         WorkspaceMember[]
+  capabilityGrants CapabilityGrant[]
+  executions      CapabilityExecution[]
+  artifacts       Artifact[]
+  agents          Agent[]
+  agentRuns       AgentRun[]
+  conversations   Conversation[]
+  links           ZuvreLink[]
+  qrCodes         QrCode[]
+  auditLogs       AuditLog[]
+  entitlementOverrides EntitlementOverride[]
+  subscription    Subscription?
 
-  @@map("users")
+  @@index([ownerId])
 }
 
-model Workspace {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  memberships          WorkspaceMembership[]
-  projects             Project[]
-  creationRequests     CreationRequest[]
-  creationSpecifications CreationSpecification[]
-  builds               Build[]
-  assets               Asset[]
-  deployments          Deployment[]
-
-  @@map("workspaces")
+enum WorkspaceKind {
+  PERSONAL
+  TEAM
+  ORGANIZATION
 }
 
-enum WorkspaceRole {
-  owner
-  admin
-  member
+model Role {
+  id            String   @id @default(cuid())
+  workspaceId   String?  // null => platform-level role (e.g. PLATFORM_OWNER, OPS_ON_CALL)
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  key           String   // e.g. "owner", "editor", "viewer", "ops_on_call"
+  label         String
+  permissions   Json     // list of permission strings; interpreted by @zuvre/auth
+  maxOccupants  Int?     // platform owner can cap seats per role (spec §12)
+  createdAt     DateTime @default(now())
+
+  members       WorkspaceMember[]
+
+  @@unique([workspaceId, key])
 }
 
-model WorkspaceMembership {
-  id          String        @id @default(uuid())
+model WorkspaceMember {
+  id          String   @id @default(cuid())
   workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
-  role        WorkspaceRole
-  createdAt   DateTime      @default(now())
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId      String
+  role        Role     @relation(fields: [roleId], references: [id])
+  status      MemberStatus @default(ACTIVE)
+  invitedAt   DateTime @default(now())
+  joinedAt    DateTime?
 
   @@unique([workspaceId, userId])
   @@index([workspaceId])
-  @@map("workspace_memberships")
 }
 
-model Project {
-  id             String   @id @default(uuid())
+enum MemberStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+// ---------------------------------------------------------------------------
+// Capability System (see docs/09-capability-system.md)
+// ---------------------------------------------------------------------------
+
+model CapabilityDefinition {
+  id            String   @id // stable key, e.g. "ai.chat", "image.generate", "site.build"
+  version       String   // semver
+  displayName   String
+  description   String
+  category      String
+  inputSchema   Json     // JSON Schema for validated input
+  outputSchema  Json     // JSON Schema for produced artifacts/results
+  requiredPermissions Json // permission strings a grant must satisfy
+  isEnabled     Boolean  @default(true)   // platform-wide kill switch (owner-controlled)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  grants        CapabilityGrant[]
+  executions    CapabilityExecution[]
+
+  @@unique([id, version])
+}
+
+model CapabilityGrant {
+  id             String   @id @default(cuid())
   workspaceId    String
-  name           String
-  // Opaque identifier interpreted only by capability modules — never
-  // branched on inside this schema or inside @zuvre/core.
-  capabilityType String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  capabilityId   String
+  capability     CapabilityDefinition @relation(fields: [capabilityId], references: [id])
+  grantedScopes  Json     // fine-grained scopes, e.g. external network domains allowed
+  approvalPolicy ApprovalPolicy @default(AUTO)
+  isEnabled      Boolean  @default(true)
+  grantedAt      DateTime @default(now())
+  grantedByUserId String?
 
-  workspace           Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  creationRequests     CreationRequest[]
-  creationSpecifications CreationSpecification[]
-  builds               Build[]
-  assets               Asset[]
-  deployments          Deployment[]
+  @@unique([workspaceId, capabilityId])
+}
+
+enum ApprovalPolicy {
+  AUTO            // capability may run without per-invocation approval
+  REQUIRE_APPROVAL // each sensitive invocation needs explicit user/owner approval
+  BLOCKED
+}
+
+model CapabilityExecution {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  capabilityId  String
+  capability    CapabilityDefinition @relation(fields: [capabilityId], references: [id])
+  initiatedByUserId String?
+  agentRunId    String?
+  agentRun      AgentRun? @relation(fields: [agentRunId], references: [id])
+  status        ExecutionStatus @default(QUEUED)
+  input         Json
+  output        Json?
+  error         Json?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  artifacts     Artifact[]
+
+  @@index([workspaceId, status])
+  @@index([capabilityId])
+}
+
+enum ExecutionStatus {
+  QUEUED
+  RUNNING
+  AWAITING_APPROVAL
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model Artifact {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  executionId   String?
+  execution     CapabilityExecution? @relation(fields: [executionId], references: [id])
+  kind          String   // "website" | "image" | "document" | "game" | "audio" | ...
+  title         String
+  storageRef    String   // pointer into blob storage (provider-agnostic)
+  metadata      Json
+  createdAt     DateTime @default(now())
+
+  link          ZuvreLink?
+  qrCodes       QrCode[]
+
+  @@index([workspaceId, kind])
+}
+
+// ---------------------------------------------------------------------------
+// Agents
+// ---------------------------------------------------------------------------
+
+model Agent {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name          String
+  purpose       String
+  allowedCapabilityIds Json // subset of capability ids the agent may invoke
+  allowExternalWork Boolean @default(false)
+  createdAt     DateTime @default(now())
+
+  runs          AgentRun[]
 
   @@index([workspaceId])
-  @@map("projects")
 }
 
-enum CreationRequestStatus {
-  pending
-  specified
-  rejected
+model AgentRun {
+  id            String   @id @default(cuid())
+  agentId       String
+  agent         Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  initiatedByUserId String
+  initiatedBy   User     @relation("AgentRunInitiator", fields: [initiatedByUserId], references: [id])
+  goal          String
+  status        ExecutionStatus @default(QUEUED)
+  plan          Json?    // step plan the agent produced
+  createdAt     DateTime @default(now())
+  finishedAt    DateTime?
+
+  executions    CapabilityExecution[]
+
+  @@index([workspaceId, status])
 }
 
-model CreationRequest {
-  id          String                 @id @default(uuid())
+// ---------------------------------------------------------------------------
+// Conversations & Memory
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id          String   @id @default(cuid())
   workspaceId String
-  projectId   String
-  rawInput    String
-  status      CreationRequestStatus  @default(pending)
-  createdAt   DateTime               @default(now())
-
-  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project       Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  specification CreationSpecification?
-
-  @@index([workspaceId])
-  @@index([projectId])
-  @@map("creation_requests")
-}
-
-model CreationSpecification {
-  id                 String   @id @default(uuid())
-  workspaceId        String
-  projectId          String
-  creationRequestId  String   @unique
-  capabilityType     String
-  // Opaque JSON payload — shape owned entirely by the capability module
-  // named in capabilityType. Not interpreted at the schema level.
-  payload            Json
-  createdAt          DateTime @default(now())
-
-  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  creationRequest CreationRequest @relation(fields: [creationRequestId], references: [id], onDelete: Cascade)
-  builds          Build[]
-
-  @@index([workspaceId])
-  @@index([projectId])
-  @@map("creation_specifications")
-}
-
-enum BuildStatus {
-  queued
-  planning
-  executing
-  succeeded
-  failed
-}
-
-model Build {
-  id                       String      @id @default(uuid())
-  workspaceId              String
-  projectId                String
-  creationSpecificationId  String
-  status                   BuildStatus @default(queued)
-  startedAt                DateTime?
-  completedAt              DateTime?
-  error                    String?
-  createdAt                DateTime    @default(now())
-
-  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project       Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  specification CreationSpecification  @relation(fields: [creationSpecificationId], references: [id], onDelete: Cascade)
-  assets        Asset[]
-  deployments   Deployment[]
-
-  @@index([workspaceId])
-  @@index([projectId])
-  @@map("builds")
-}
-
-model Asset {
-  id          String   @id @default(uuid())
-  workspaceId String
-  projectId   String
-  buildId     String
-  type        String
-  location    String
-  metadata    Json?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title       String?
   createdAt   DateTime @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  build     Build     @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  messages    Message[]
 
   @@index([workspaceId])
-  @@index([buildId])
-  @@map("assets")
 }
 
-enum DeploymentStatus {
-  pending
-  deploying
-  live
-  failed
-  rolled_back
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String   // "user" | "assistant" | "system" | "tool"
+  content        Json
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId])
 }
 
-model Deployment {
-  id          String           @id @default(uuid())
-  workspaceId String
-  projectId   String
-  buildId     String
-  // e.g. "vercel" — see ADR-0007. Never branched on inside core.
-  provider    String
-  status      DeploymentStatus @default(pending)
-  url         String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+model MemoryItem {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String?  // null => personal memory not tied to one workspace
+  scope       String   // "profile" | "preference" | "project" | ...
+  content     String
+  visibility  MemoryVisibility @default(PRIVATE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  build     Build     @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  @@index([userId, scope])
+}
+
+enum MemoryVisibility {
+  PRIVATE
+  WORKSPACE_SHARED
+}
+
+// ---------------------------------------------------------------------------
+// Plans, Entitlements, Billing
+// ---------------------------------------------------------------------------
+
+model Plan {
+  id            String   @id // e.g. "spark", "ember", "atlas", "orbit" — see Brand Book
+  name          String
+  description   String
+  priceMonthlyMinorUnits Int   // 0 for free tiers
+  currency      String   @default("USD")
+  entitlements  Json     // { capabilityId: { quota, unit, period } }
+  isPubliclyVisible Boolean @default(true)
+  sortOrder     Int      @default(0)
+
+  workspaces    Workspace[]
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id            String   @id @default(cuid())
+  workspaceId   String   @unique
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  planId        String
+  plan          Plan     @relation(fields: [planId], references: [id])
+  status        SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime @default(now())
+  currentPeriodEnd   DateTime?
+  trialEndsAt   DateTime?
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELLED
+}
+
+model EntitlementOverride {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  capabilityId  String
+  quota         Int
+  unit          String
+  period        String
+  reason        String?
+  createdAt     DateTime @default(now())
 
   @@index([workspaceId])
-  @@index([buildId])
-  @@map("deployments")
+}
+
+// ---------------------------------------------------------------------------
+// Links & QR (first-class, spec §17–18)
+// ---------------------------------------------------------------------------
+
+model ZuvreLink {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entityType    String   // "profile" | "artifact" | "agent" | "capability" | ...
+  entityId      String
+  artifactId    String?  @unique
+  artifact      Artifact? @relation(fields: [artifactId], references: [id])
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  qrCodes       QrCode[]
+
+  @@index([workspaceId, entityType])
+}
+
+model QrCode {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  linkId        String?
+  link          ZuvreLink? @relation(fields: [linkId], references: [id])
+  artifactId    String?
+  artifact      Artifact? @relation(fields: [artifactId], references: [id])
+  isDynamic     Boolean  @default(true) // dynamic => destination resolved via linkId at scan time
+  staticTarget  String?  // used only when isDynamic = false
+  styleConfig   Json?
+  createdAt     DateTime @default(now())
+
+  @@index([workspaceId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  workspaceId   String?
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actorUserId   String?
+  actor         User?    @relation("AuditActor", fields: [actorUserId], references: [id])
+  actorType     String   // "user" | "agent" | "system" | "owner_ai"
+  action        String
+  targetType    String?
+  targetId      String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([actorUserId])
 }

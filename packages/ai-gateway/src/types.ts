@@ -1,57 +1,61 @@
 /**
- * Provider-agnostic types for the AI gateway (ADR-0006). No module or app
- * imports a provider SDK (OpenAI, Anthropic, Google, etc.) directly — they
- * all go through AIGateway, which routes to a registered ModelProvider.
+ * ZUVRE AI Gateway — provider abstraction (spec §4).
  *
- * Only a NullProvider (testing/) exists in this foundation build. Real
- * providers are added when a capability module actually needs one — not
- * pre-built speculatively (per ADR-0006's explicit "do not overbuild").
+ * Nothing in the platform calls an AI provider's SDK directly. Everything
+ * goes through `AiGateway`, which:
+ *   - selects a provider/model per modality and per capability,
+ *   - falls back to a secondary provider on failure,
+ *   - tracks usage per workspace for billing/quota,
+ *   - is the single place new modalities/providers get wired in.
  */
 
-export interface ModelMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
+export type AiModality = "text" | "image" | "audio" | "voice" | "video" | "embedding";
 
-export interface GenerateRequest {
+export interface AiUsage {
+  provider: string;
   model: string;
-  messages: ModelMessage[];
-  /** If set, the provider should attempt to constrain output to this JSON shape. */
-  responseSchema?: unknown;
-  stream?: boolean;
+  inputUnits?: number; // tokens, seconds, or pixels depending on modality
+  outputUnits?: number;
+  costEstimateMinorUnits?: number;
 }
 
-export interface UsageInfo {
-  inputTokens: number;
-  outputTokens: number;
+export interface TextGenerationRequest {
+  modality: "text";
+  messages: { role: "system" | "user" | "assistant" | "tool"; content: string }[];
+  tools?: unknown[];
+  maxOutputTokens?: number;
+  temperature?: number;
 }
 
-export interface GenerateResult {
-  content: string;
-  usage: UsageInfo;
-  model: string;
-  providerId: string;
+export interface ImageGenerationRequest {
+  modality: "image";
+  prompt: string;
+  referenceImages?: string[]; // storage refs
+  size?: string;
 }
 
-export class ModelProviderError extends Error {
-  constructor(
-    message: string,
-    public readonly providerId: string,
-    public override readonly cause?: unknown,
-  ) {
-    super(message);
-    this.name = "ModelProviderError";
-  }
+export type AiRequest = TextGenerationRequest | ImageGenerationRequest;
+
+export interface AiResponse<T = unknown> {
+  output: T;
+  usage: AiUsage;
+  raw?: unknown;
 }
 
-/** What a concrete provider (OpenAI, Anthropic, etc.) implements. */
-export interface ModelProvider {
-  readonly id: string;
-  generate(request: GenerateRequest): Promise<GenerateResult>;
+export interface AiProviderAdapter {
+  id: string; // e.g. "anthropic", "openai", "local-stub"
+  supportedModalities: AiModality[];
+  isConfigured(): boolean;
+  generateText?(req: TextGenerationRequest, model: string): Promise<AiResponse<string>>;
+  generateImage?(req: ImageGenerationRequest, model: string): Promise<AiResponse<string>>;
 }
 
-export interface UsageRecord extends UsageInfo {
-  providerId: string;
-  model: string;
-  at: Date;
+export interface ModelRoute {
+  modality: AiModality;
+  /** e.g. "capability:image.generate" or "default" */
+  scope: string;
+  primaryProvider: string;
+  primaryModel: string;
+  fallbackProvider?: string;
+  fallbackModel?: string;
 }

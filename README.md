@@ -1,46 +1,60 @@
 # ZUVRE
 
-An extensible AI creation ecosystem. This repository is the **Foundation Skeleton** — the capability-agnostic core, cross-cutting boundaries, and process scaffolding the first real capability module (`modules/website-creation`) will be built on top of. See `docs/architecture/README.md` for the full picture.
+*Zoo-vray.* A capability-driven AI ecosystem — see `docs/01-product-bible.md`
+for the vision and `STATUS.md` for exactly what in this repository is real
+versus architected-only.
 
-## Status
+## Requirements
 
-Foundation stage. No capability modules exist yet. See `VALIDATION.md` for exactly what has been verified to work versus what is authored and awaiting verification after dependency installation.
+- Node.js ≥ 20
+- pnpm ≥ 9 (`npm install -g pnpm`)
+- A PostgreSQL database (local, or a free tier from Neon/Supabase/Railway)
 
-## Repository Layout
-
-```
-apps/           web (Next.js), api (tRPC + REST), worker (background jobs)
-packages/       core, db, capability-sdk, ai-gateway, agent-runtime,
-                tool-runtime, auth, observability, ui, config
-modules/        (empty — website-creation is the next thing built here)
-adr/            Architecture Decision Records — read these first
-docs/           architecture overview, module-authoring guide, process rules
-```
-
-## Getting Started (in a real development environment)
-
-This skeleton was built in a sandbox with no network access, so none of the following has actually been run — see `VALIDATION.md` for specifics. In a real environment:
+## Setup
 
 ```bash
 pnpm install
-docker compose up -d               # starts local Postgres
-pnpm --filter @zuvre/db prisma:migrate:dev
-pnpm build
-pnpm test
+cp .env.example .env        # then fill in DATABASE_URL, AUTH_SECRET, ANTHROPIC_API_KEY
+pnpm --filter @zuvre/db generate
+pnpm --filter @zuvre/db migrate    # creates tables from prisma/schema.prisma
+pnpm exec tsx packages/db/prisma/seed.ts   # seeds plans + platform roles
 pnpm dev
 ```
 
-## Where to Go Next
+`pnpm install` has **not** been run in the environment this repo was
+generated in (no network access) — see `STATUS.md` before assuming
+anything beyond static file structure has been validated.
 
-- **Understand the architecture**: `docs/architecture/README.md`
-- **Understand a specific decision**: `adr/README.md` (index of all 8 approved ADRs)
-- **Build a capability module**: `docs/module-authoring.md`
-- **Contribute** (human or AI agent): `CONTRIBUTING.md` and `docs/multi-agent-development.md`
-- **Know what's actually verified**: `VALIDATION.md`
+## Environment Variables
 
-## Principles (see ADRs for full rationale)
+See `.env.example` for the full list. Minimum to run locally:
 
-1. `packages/core` is capability-agnostic — no `if (website) / if (game)` branching, ever.
-2. Every cross-cutting concern (AI calls, deployment, data access, auth) has exactly one gateway package.
-3. Workspace is the tenant boundary, enforced centrally, not per-query.
-4. Nothing is built for a future capability type before it's real — no stub modules.
+| Variable | Required | Notes |
+|---|---|---|
+| `DATABASE_URL` | Yes | Postgres connection string |
+| `AUTH_SECRET` | Yes | 32+ random bytes, used to sign session tokens |
+| `ANTHROPIC_API_KEY` | For `ai.chat` to work | Without it, the capability's grant check still works but execution fails clearly (`isConfigured()` guard in the provider adapter) |
+
+## Deploy to Vercel
+
+1. Push this repository to GitHub.
+2. Import it in Vercel, set the **Root Directory** to `apps/web`.
+3. Vercel auto-detects Next.js; set the build command to
+   `cd ../.. && pnpm install && pnpm --filter @zuvre/web build` if it
+   doesn't pick up the monorepo automatically (Vercel usually does for
+   pnpm workspaces without extra config).
+4. Add the environment variables above in the Vercel project settings.
+5. Provision Postgres (Vercel Postgres, Neon, or Supabase all work — the
+   app only assumes a standard Postgres connection string) and run
+   `pnpm --filter @zuvre/db migrate deploy` against it before first
+   traffic.
+
+## Monorepo Map
+
+See `docs/06-architecture.md` §1.
+
+## Documentation
+
+Start at `docs/README.md` — it indexes the full documentation set and is
+explicit about which documents are fully written versus outlined for a
+later pass.

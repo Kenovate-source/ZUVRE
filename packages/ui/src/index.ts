@@ -1,2 +1,1 @@
-export { Button } from "./button.js";
-export type { ButtonProps } from "./button.js";
+export * from "./tokens";
